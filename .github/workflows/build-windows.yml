@@ -1,0 +1,57 @@
+name: build-pxtools-win64
+
+on:
+  workflow_dispatch: {}   # avvio manuale dal tab "Actions"
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup MSYS2
+        uses: msys2/setup-msys2@v2
+        with:
+          update: true
+          install: >-
+            autoconf
+            automake
+            libtool
+            make
+            gcc
+            gettext-devel
+            pkgconf
+
+      - name: Autotools bootstrap
+        shell: msys2 {0}
+        run: |
+          autoreconf -fi
+
+      - name: Configure
+        shell: msys2 {0}
+        run: |
+          ./configure
+
+      - name: Build
+        shell: msys2 {0}
+        run: |
+          make -j2
+          mkdir -p dist
+          cp -v src/*.exe dist/ || true
+          # alcuni ambienti generano eseguibili senza estensione .exe,
+          # copiamoli comunque:
+          cp -v src/pxcsvdump* dist/ 2>/dev/null || true
+          cp -v src/pxsqldump* dist/ 2>/dev/null || true
+          cp -v src/pxinfo*    dist/ 2>/dev/null || true
+
+      - name: Archive ZIP
+        run: |
+          powershell -Command "Compress-Archive -Path dist/* -DestinationPath pxtools-win64.zip"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pxtools-win64
+          path: pxtools-win64.zip
