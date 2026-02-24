@@ -1,21 +1,10 @@
-name: build-pxtools-win64
-
-on:
-  workflow_dispatch: {}   # avvio manuale dal tab "Actions"
-
-jobs:
-  build:
-    runs-on: windows-latest
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup MSYS2
+- name: Setup MSYS2 (MSYS)
         uses: msys2/setup-msys2@v2
         with:
+          msystem: MSYS
           update: true
           install: >-
+            base-devel
             autoconf
             automake
             libtool
@@ -24,6 +13,13 @@ jobs:
             gettext-devel
             pkgconf
 
+      # NEW: copia l’infrastruttura gettext (po/Makefile.in.in, m4/*.m4, ecc.)
+      - name: Gettext infrastructure (autopoint)
+        shell: msys2 {0}
+        run: |
+          test -d po || mkdir po
+          autopoint -f
+
       - name: Autotools bootstrap
         shell: msys2 {0}
         run: |
@@ -31,6 +27,9 @@ jobs:
 
       - name: Configure
         shell: msys2 {0}
+        env:
+          # in MSYS spesso serve linkare libintl e iconv
+          LIBS: "-lintl -liconv"
         run: |
           ./configure
 
@@ -39,19 +38,6 @@ jobs:
         run: |
           make -j2
           mkdir -p dist
-          cp -v src/*.exe dist/ || true
-          # alcuni ambienti generano eseguibili senza estensione .exe,
-          # copiamoli comunque:
           cp -v src/pxcsvdump* dist/ 2>/dev/null || true
           cp -v src/pxsqldump* dist/ 2>/dev/null || true
           cp -v src/pxinfo*    dist/ 2>/dev/null || true
-
-      - name: Archive ZIP
-        run: |
-          powershell -Command "Compress-Archive -Path dist/* -DestinationPath pxtools-win64.zip"
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: pxtools-win64
-          path: pxtools-win64.zip
