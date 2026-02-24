@@ -1,6 +1,20 @@
-- name: Setup MSYS2 (MSYS)
-        uses: msys2/setup-msys2@v2
-        with:
+
+name: build-pxtools
+
+on:
+  workflow_dispatch: {}   # avvio manuale
+
+jobs:
+  # ============ JOB A: MSYS (eseguibili che usano msys-2.0.dll) ============
+  msys:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+name: Setup MSYS2 (MSYS)
+uses: msys2/setup-msys2@v2
+with:
           msystem: MSYS
           update: true
           install: >-
@@ -14,28 +28,28 @@
             pkgconf
 
       # NEW: copia l’infrastruttura gettext (po/Makefile.in.in, m4/*.m4, ecc.)
-      - name: Gettext infrastructure (autopoint)
-        shell: msys2 {0}
-        run: |
+      name: Gettext infrastructure (autopoint)
+shell: msys2 {0}
+run: |
           test -d po || mkdir po
           autopoint -f
 
-      - name: Autotools bootstrap
-        shell: msys2 {0}
-        run: |
+name: Autotools bootstrap
+shell: msys2 {0}
+run: |
           autoreconf -fi
 
-      - name: Configure
-        shell: msys2 {0}
-        env:
+name: Configure
+shell: msys2 {0}
+env:
           # in MSYS spesso serve linkare libintl e iconv
           LIBS: "-lintl -liconv"
         run: |
           ./configure
 
-      - name: Build
-        shell: msys2 {0}
-        run: |
+name: Build
+shell: msys2 {0}
+run: |
           make -j2
           mkdir -p dist
           cp -v src/pxcsvdump* dist/ 2>/dev/null || true
