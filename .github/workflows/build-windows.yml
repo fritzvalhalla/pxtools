@@ -12,9 +12,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-name: Setup MSYS2 (MSYS)
-uses: msys2/setup-msys2@v2
-with:
+      - name: Setup MSYS2 (MSYS)
+        uses: msys2/setup-msys2@v2
+        with:
           msystem: MSYS
           update: true
           install: >-
@@ -27,31 +27,106 @@ with:
             gettext-devel
             pkgconf
 
-      # NEW: copia l’infrastruttura gettext (po/Makefile.in.in, m4/*.m4, ecc.)
-      name: Gettext infrastructure (autopoint)
-shell: msys2 {0}
-run: |
-          test -d po || mkdir po
-          autopoint -f
+      - name: Autotools bootstrap (autoreconf o autogen.sh)
+        shell: msys2 {0}
+        run: |
+          if [ -f configure.ac ] || [ -f configure.in ]; then
+            autoreconf -fi || true
+          fi
+          if [ ! -f configure ] && [ -f autogen.sh ]; then
+            sh autogen.sh
+          fi
 
-name: Autotools bootstrap
-shell: msys2 {0}
-run: |
-          autoreconf -fi
-
-name: Configure
-shell: msys2 {0}
-env:
-          # in MSYS spesso serve linkare libintl e iconv
-          LIBS: "-lintl -liconv"
+      - name: Configure (forza intl)
+        shell: msys2 {0}
+        env:
+          LIBS: "-lintl"
         run: |
           ./configure
 
-name: Build
-shell: msys2 {0}
-run: |
+      - name: Build
+        shell: msys2 {0}
+        run: |
           make -j2
           mkdir -p dist
+          # copia gli eseguibili (con o senza .exe)
           cp -v src/pxcsvdump* dist/ 2>/dev/null || true
           cp -v src/pxsqldump* dist/ 2>/dev/null || true
           cp -v src/pxinfo*    dist/ 2>/dev/null || true
+
+      - name: Bundle required DLLs (msys/intl/iconv)
+        shell: msys2 {0}
+        run: |
+          for f in dist/*; do
+            if [ -x "$f" ]; then
+              ldd "$f" | awk '/msys-/{print $3} /intl-.*\.dll/{print $3} /iconv-.*\.dll/{print $3}' | xargs -r -I {} cp -v "{}" dist/
+            fi
+          done
+
+      - name: Archive (MSYS)
+        run: |
+          powershell -Command "Compress-Archive -Path dist/* -DestinationPath pxtools-win64-msys.zip"
+
+      - name: Upload artifact (MSYS)
+        uses: actions/upload-artifact@v4
+        with:
+          name: pxtools-win64-msys
+          path: pxtools-win64-msys.zip
+
+  # ============ JOB B: MINGW64 (tentativo di exe “nativi”) ============
+  mingw64:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup MSYS2 (MINGW64)
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            mingw-w64-x86_64-toolchain
+            mingw-w64-x86_64-gettext
+            autoconf
+            automake
+            libtool
+            make
+            pkgconf
+
+      - name: Autotools bootstrap
+        shell: msys2 {0}
+        run: |
+          if [ -f configure.ac ] || [ -f configure.in ]; then
+            autoreconf -fi || true
+          fi
+          if [ ! -f configure ] && [ -f autogen.sh ]; then
+            sh autogen.sh
+          fi
+
+      - name: Configure (host mingw)
+        shell: msys2 {0}
+        env:
+          CC: x86_64-w64-mingw32-gcc
+          CXX: x86_64-w64-mingw32-g++
+        run: |
+          ./configure --host=x86_64-w64-mingw32 || ./configure
+
+      - name: Build
+        shell: msys2 {0}
+        run: |
+          make -j2
+          mkdir -p dist
+          cp -v src/pxcsvdump*.exe dist/ 2>/dev/null || true
+          cp -v src/pxsqldump*.exe dist/ 2>/dev/null || true
+          cp -v src/pxinfo*.exe    dist/ 2>/dev/null || true
+
+      - name: Archive (MINGW64)
+        run: |
+          powershell -Command "Compress-Archive -Path dist/* -DestinationPath pxtools-win64-mingw.zip"
+
+      - name: Upload artifact (MINGW64)
+        uses: actions/upload-artifact@v4
+        with:
+          name: pxtools-win64-mingw
+          path: pxtools-win64-mingw.zip
